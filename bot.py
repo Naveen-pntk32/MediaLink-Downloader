@@ -37,6 +37,8 @@ logging.basicConfig(
     format="%(asctime)s - [%(levelname)s] - %(name)s - %(message)s",
     level=logging.INFO,
 )
+logger = logging.getLogger("MediaLinkBot")
+
 # In-memory storage for pending user requests: {req_id: {"url": str, "chat_id": int, ...}}
 pending_requests: Dict[str, Dict[str, Any]] = {}
 
