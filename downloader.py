@@ -144,6 +144,11 @@ def get_media_info(url: str) -> Dict[str, Any]:
         "no_warnings": True,
         "nocheckcertificate": True,
         "skip_download": True,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["ios", "mweb", "android", "tv"]
+            }
+        },
     }
 
     if ffmpeg_exe:
@@ -251,6 +256,11 @@ def download_media(
         "nocheckcertificate": True,
         "skip_download": True,
         "ffmpeg_location": ffmpeg_exe,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["ios", "mweb", "android", "tv"]
+            }
+        },
     }
     if has_valid_cookies():
         probe_opts["cookiefile"] = str(COOKIES_FILE_PATH)
@@ -317,6 +327,11 @@ def download_media(
         "nocheckcertificate": True,
         "windowsfilenames": True,
         "progress_hooks": [internal_hook],
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["ios", "mweb", "android", "tv"]
+            }
+        },
     }
 
     if has_valid_cookies():
@@ -324,7 +339,7 @@ def download_media(
 
     if format_type == "video":
         ydl_opts.update({
-            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
+            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/18/best",
             "merge_output_format": "mp4",
             "postprocessors": [
                 {
