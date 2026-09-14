@@ -184,10 +184,11 @@ def get_media_info(url: str) -> Dict[str, Any]:
     try:
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(clean_url, download=False)
+                info = ydl.extract_info(clean_url, download=False, process=False)
         except Exception as e:
             err_str = str(e)
-            if "cookiefile" in ydl_opts and any(k in err_str for k in ["reloaded", "formats", "SABR"]):
+            is_yt = any(d in clean_url.lower() for d in ["youtube", "youtu.be"])
+            if is_yt and "cookiefile" in ydl_opts and any(k in err_str.lower() for k in ["reloaded", "sabr"]):
                 logger.info("Retrying get_media_info without cookies due to SABR/reload error...")
                 retry_opts = dict(ydl_opts)
                 retry_opts.pop("cookiefile", None)
@@ -197,7 +198,7 @@ def get_media_info(url: str) -> Dict[str, Any]:
                     }
                 }
                 with yt_dlp.YoutubeDL(retry_opts) as ydl:
-                    info = ydl.extract_info(clean_url, download=False)
+                    info = ydl.extract_info(clean_url, download=False, process=False)
             else:
                 return {"success": False, "error": err_str}
 
@@ -208,6 +209,12 @@ def get_media_info(url: str) -> Dict[str, Any]:
         duration = info.get("duration", 0)
         extractor = info.get("extractor_key", "Generic")
         thumbnail = info.get("thumbnail")
+        if not thumbnail and "display_url" in info:
+            thumbnail = info.get("display_url")
+        if not thumbnail and "entries" in info and info["entries"]:
+            first = info["entries"][0]
+            if first:
+                thumbnail = first.get("thumbnail") or first.get("display_url") or first.get("url")
         is_playlist = "entries" in info
 
         return {
@@ -437,7 +444,8 @@ def download_media(
                 dl_info = ydl.extract_info(clean_url, download=True)
         except Exception as e:
             err_str = str(e)
-            if "cookiefile" in ydl_opts and any(k in err_str for k in ["reloaded", "formats", "SABR"]):
+            is_yt = any(d in clean_url.lower() for d in ["youtube", "youtu.be"])
+            if is_yt and "cookiefile" in ydl_opts and any(k in err_str.lower() for k in ["reloaded", "sabr"]):
                 logger.info("Retrying download_media without cookies due to SABR/reload error...")
                 retry_opts = dict(ydl_opts)
                 retry_opts.pop("cookiefile", None)
