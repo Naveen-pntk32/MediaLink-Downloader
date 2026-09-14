@@ -177,6 +177,9 @@ def get_media_info(url: str) -> Dict[str, Any]:
     if ffmpeg_exe:
         ydl_opts["ffmpeg_location"] = ffmpeg_exe
 
+    if shutil.which("node"):
+        ydl_opts["js_runtimes"] = {"node": {}}
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(clean_url, download=False)
@@ -288,6 +291,9 @@ def download_media(
             }
         }
 
+    if shutil.which("node"):
+        probe_opts["js_runtimes"] = {"node": {}}
+
     info = None
     try:
         with yt_dlp.YoutubeDL(probe_opts) as ydl:
@@ -360,6 +366,9 @@ def download_media(
                 "player_client": ["ios", "mweb", "android", "tv"]
             }
         }
+
+    if shutil.which("node"):
+        ydl_opts["js_runtimes"] = {"node": {}}
 
     if format_type == "video":
         ydl_opts.update({

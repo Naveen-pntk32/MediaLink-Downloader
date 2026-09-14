@@ -1,6 +1,5 @@
 # Netscape HTTP Cookie File
-# https://curl.haxx.se/rfc/cookie_spec.html
-# This is a generated file! Do not edit.
+# Merged YouTube & Instagram Cookies
 
 .youtube.com	TRUE	/	FALSE	1804757086	HSID	AwVw4aKmIc_sAjspW
 .youtube.com	TRUE	/	TRUE	1804757086	SSID	AA1o38klDVBKKialq
@@ -21,3 +20,13 @@
 .youtube.com	TRUE	/	TRUE	1804914869	__Secure-ROLLOUT_TOKEN	CLH0wIHoi_HKeBDT5KLv3-KSAxjknJiKqO2WAw%3D%3D
 .youtube.com	TRUE	/	TRUE	1804928466	__Secure-YNID	21.YT=S2VbpIiOhSwWiIzeNcMKI1hQTyqRg88PnMq5ihrJ_SP1i81O5A9uE8R2eD3kcbqnvXvqsB2B8hLFPsaTcSJneSHS7c7oiB_3ssHRQTqtF14vRxKT7e-u2-MjU8sAf-HcDYNUHF1xjg5GTdL4Ua_KaJTVTVqdTnT6Kt9aOUHMo2po1QG1qJ4k31-68jZH9sJurGcwrwBdMJSjnyS7h-IyvO-cswCcqvJppS9wyjIAKWJdECrTzI4ZOJsSKrp9dKeruPlwmsCN7_Tp109AnfRYvJoLNTKBL4azy-1aYqcnJPTv1IHUKgwITsUciIz_duTzdCA8GYBk8I9QORyXTxnvqA
 .youtube.com	TRUE	/	TRUE	0	YSC	EteZv-zyO_A
+.instagram.com	TRUE	/	TRUE	1822369762	datr	08-PajSPFz_nkEzDhL3KvIOr
+.instagram.com	TRUE	/	TRUE	1819345762	ig_did	7452C714-4FED-4657-9A80-A38437C17C62
+.instagram.com	TRUE	/	TRUE	1822369762	mid	ao_P0wALAAEIxX7D4PVj7aLUkeaw
+.instagram.com	TRUE	/	TRUE	1822369763	ps_l	1
+.instagram.com	TRUE	/	TRUE	1822369763	ps_n	1
+.instagram.com	TRUE	/	TRUE	1790023344	wd	958x917
+.instagram.com	TRUE	/	TRUE	1820953548	sessionid	57976039945%3AXtvJ6g59birVQC%3A20%3AAYnKeH9Vo5B0W4L4sp5rdaJsgAhqN52ObB-P2ky--A
+.instagram.com	TRUE	/	TRUE	0	rur	"HIL\05457976039945\0541820954953:01ff0837cfb6640958df657f709ed6f6daa087a965fed50b6f16f1031836e30f086c5667"
+.instagram.com	TRUE	/	TRUE	1797194548	ds_user_id	57976039945
+.instagram.com	TRUE	/	TRUE	1823978969	csrftoken	qRFRlKgx3vDJbJiWSanHJlqQKSXpck1r
