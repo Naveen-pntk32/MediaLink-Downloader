@@ -180,26 +180,44 @@ def get_media_info(url: str) -> Dict[str, Any]:
     if shutil.which("node"):
         ydl_opts["js_runtimes"] = {"node": {}}
 
+    info = None
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(clean_url, download=False)
-            if not info:
-                return {"success": False, "error": "Could not retrieve media info."}
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(clean_url, download=False)
+        except Exception as e:
+            err_str = str(e)
+            if "cookiefile" in ydl_opts and any(k in err_str for k in ["reloaded", "formats", "SABR"]):
+                logger.info("Retrying get_media_info without cookies due to SABR/reload error...")
+                retry_opts = dict(ydl_opts)
+                retry_opts.pop("cookiefile", None)
+                retry_opts["extractor_args"] = {
+                    "youtube": {
+                        "player_client": ["ios", "mweb", "android", "tv"]
+                    }
+                }
+                with yt_dlp.YoutubeDL(retry_opts) as ydl:
+                    info = ydl.extract_info(clean_url, download=False)
+            else:
+                return {"success": False, "error": err_str}
 
-            title = info.get("title", "Media")
-            duration = info.get("duration", 0)
-            extractor = info.get("extractor_key", "Generic")
-            thumbnail = info.get("thumbnail")
-            is_playlist = "entries" in info
+        if not info:
+            return {"success": False, "error": "Could not retrieve media info."}
 
-            return {
-                "success": True,
-                "title": title,
-                "duration": duration,
-                "extractor": extractor,
-                "thumbnail": thumbnail,
-                "is_playlist": is_playlist,
-            }
+        title = info.get("title", "Media")
+        duration = info.get("duration", 0)
+        extractor = info.get("extractor_key", "Generic")
+        thumbnail = info.get("thumbnail")
+        is_playlist = "entries" in info
+
+        return {
+            "success": True,
+            "title": title,
+            "duration": duration,
+            "extractor": extractor,
+            "thumbnail": thumbnail,
+            "is_playlist": is_playlist,
+        }
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -300,7 +318,18 @@ def download_media(
             # process=False prevents YoutubeDL from failing on posts with no video formats
             info = ydl.extract_info(clean_url, download=False, process=False)
     except Exception as probe_err:
-        logger.info(f"Probe notice: {probe_err}")
+        err_str = str(probe_err)
+        if "cookiefile" in probe_opts and any(k in err_str for k in ["reloaded", "formats", "SABR"]):
+            logger.info("Retrying probe without cookies due to SABR/reload error...")
+            retry_probe = dict(probe_opts)
+            retry_probe.pop("cookiefile", None)
+            try:
+                with yt_dlp.YoutubeDL(retry_probe) as ydl:
+                    info = ydl.extract_info(clean_url, download=False, process=False)
+            except Exception:
+                pass
+        else:
+            logger.info(f"Probe notice: {probe_err}")
 
     # Check if probe revealed an image-only post or photo carousel
     if info:
@@ -402,59 +431,41 @@ def download_media(
         })
 
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            dl_info = ydl.extract_info(clean_url, download=True)
-            if not dl_info:
-                return {"success": False, "error": "Failed to extract media."}
+        dl_info = None
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                dl_info = ydl.extract_info(clean_url, download=True)
+        except Exception as e:
+            err_str = str(e)
+            if "cookiefile" in ydl_opts and any(k in err_str for k in ["reloaded", "formats", "SABR"]):
+                logger.info("Retrying download_media without cookies due to SABR/reload error...")
+                retry_opts = dict(ydl_opts)
+                retry_opts.pop("cookiefile", None)
+                retry_opts["extractor_args"] = {
+                    "youtube": {
+                        "player_client": ["ios", "mweb", "android", "tv"]
+                    }
+                }
+                with yt_dlp.YoutubeDL(retry_opts) as ydl:
+                    dl_info = ydl.extract_info(clean_url, download=True)
+            else:
+                raise e
 
-            title = dl_info.get("title", "Media")
-            duration = dl_info.get("duration", 0)
-            extractor = dl_info.get("extractor_key", "Generic")
+        if not dl_info:
+            return {"success": False, "error": "Failed to extract media."}
 
-            final_files: List[Dict[str, Any]] = []
+        title = dl_info.get("title", "Media")
+        duration = dl_info.get("duration", 0)
+        extractor = dl_info.get("extractor_key", "Generic")
 
-            # Check requested downloads
-            req_downloads = dl_info.get("requested_downloads")
-            if req_downloads:
-                for req in req_downloads:
-                    fpath = req.get("filepath")
-                    if fpath and os.path.isfile(fpath):
-                        final_files.append({
-                            "path": fpath,
-                            "filename": os.path.basename(fpath),
-                            "size_bytes": os.path.getsize(fpath),
-                            "size_mb": round(os.path.getsize(fpath) / (1024 * 1024), 2),
-                            "media_type": "video" if format_type == "video" else "audio",
-                        })
+        final_files: List[Dict[str, Any]] = []
 
-            # Check entries
-            if not final_files and "entries" in dl_info:
-                for entry in dl_info["entries"]:
-                    if not entry:
-                        continue
-                    e_downloads = entry.get("requested_downloads")
-                    if e_downloads:
-                        for req in e_downloads:
-                            fpath = req.get("filepath")
-                            if fpath and os.path.isfile(fpath):
-                                final_files.append({
-                                    "path": fpath,
-                                    "filename": os.path.basename(fpath),
-                                    "size_bytes": os.path.getsize(fpath),
-                                    "size_mb": round(os.path.getsize(fpath) / (1024 * 1024), 2),
-                                    "media_type": "video" if format_type == "video" else "audio",
-                                })
-
-            # Fallback search in output_dir
-            if not final_files:
-                target_ext = "mp4" if format_type == "video" else "mp3"
-                media_id = dl_info.get("id", "")
-                pattern = os.path.join(output_dir, f"*{media_id}*.{target_ext}")
-                matching = glob.glob(pattern)
-                if not matching:
-                    matching = glob.glob(os.path.join(output_dir, f"*.{target_ext}"))
-
-                for fpath in matching:
+        # Check requested downloads
+        req_downloads = dl_info.get("requested_downloads")
+        if req_downloads:
+            for req in req_downloads:
+                fpath = req.get("filepath")
+                if fpath and os.path.isfile(fpath):
                     final_files.append({
                         "path": fpath,
                         "filename": os.path.basename(fpath),
@@ -463,34 +474,70 @@ def download_media(
                         "media_type": "video" if format_type == "video" else "audio",
                     })
 
-            if not final_files:
-                # If no video files, check if any photos were downloaded
-                photos = glob.glob(os.path.join(output_dir, "*.jpg")) + glob.glob(os.path.join(output_dir, "*.webp"))
-                if photos:
-                    for p in photos:
-                        final_files.append({
-                            "path": p,
-                            "filename": os.path.basename(p),
-                            "size_bytes": os.path.getsize(p),
-                            "size_mb": round(os.path.getsize(p) / (1024 * 1024), 2),
-                            "media_type": "photo",
-                        })
+        # Check entries
+        if not final_files and "entries" in dl_info:
+            for entry in dl_info["entries"]:
+                if not entry:
+                    continue
+                e_downloads = entry.get("requested_downloads")
+                if e_downloads:
+                    for req in e_downloads:
+                        fpath = req.get("filepath")
+                        if fpath and os.path.isfile(fpath):
+                            final_files.append({
+                                "path": fpath,
+                                "filename": os.path.basename(fpath),
+                                "size_bytes": os.path.getsize(fpath),
+                                "size_mb": round(os.path.getsize(fpath) / (1024 * 1024), 2),
+                                "media_type": "video" if format_type == "video" else "audio",
+                            })
 
-            if not final_files:
-                return {
-                    "success": False,
-                    "error": "Download completed, but could not locate the output file.",
-                }
+        # Fallback search in output_dir
+        if not final_files:
+            target_ext = "mp4" if format_type == "video" else "mp3"
+            media_id = dl_info.get("id", "")
+            pattern = os.path.join(output_dir, f"*{media_id}*.{target_ext}")
+            matching = glob.glob(pattern)
+            if not matching:
+                matching = glob.glob(os.path.join(output_dir, f"*.{target_ext}"))
 
+            for fpath in matching:
+                final_files.append({
+                    "path": fpath,
+                    "filename": os.path.basename(fpath),
+                    "size_bytes": os.path.getsize(fpath),
+                    "size_mb": round(os.path.getsize(fpath) / (1024 * 1024), 2),
+                    "media_type": "video" if format_type == "video" else "audio",
+                })
+
+        if not final_files:
+            # If no video files, check if any photos were downloaded
+            photos = glob.glob(os.path.join(output_dir, "*.jpg")) + glob.glob(os.path.join(output_dir, "*.webp"))
+            if photos:
+                for p in photos:
+                    final_files.append({
+                        "path": p,
+                        "filename": os.path.basename(p),
+                        "size_bytes": os.path.getsize(p),
+                        "size_mb": round(os.path.getsize(p) / (1024 * 1024), 2),
+                        "media_type": "photo",
+                    })
+
+        if not final_files:
             return {
-                "success": True,
-                "title": title,
-                "duration": duration,
-                "extractor": extractor,
-                "media_type": "video" if format_type == "video" else "audio",
-                "files": final_files,
-                "primary_file": final_files[0],
+                "success": False,
+                "error": "Download completed, but could not locate the output file.",
             }
+
+        return {
+            "success": True,
+            "title": title,
+            "duration": duration,
+            "extractor": extractor,
+            "media_type": "video" if format_type == "video" else "audio",
+            "files": final_files,
+            "primary_file": final_files[0],
+        }
 
     except yt_dlp.utils.DownloadError as e:
         err_msg = str(e)
