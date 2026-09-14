@@ -144,14 +144,36 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     ffmpeg_path = get_ffmpeg_path() or "Not found"
-    cookie_status = "Loaded & Active" if config.has_valid_cookies() else "Not found (using public access)"
+    
+    # Check domains in cookies.txt
+    cookie_domains = []
+    if config.has_valid_cookies():
+        try:
+            with open(config.COOKIES_FILE_PATH, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    sline = line.strip()
+                    if sline and not sline.startswith("#"):
+                        parts = sline.split("\t")
+                        if len(parts) >= 7:
+                            cookie_domains.append(parts[0])
+        except Exception:
+            pass
+
+    unique_domains = sorted(set(cookie_domains))
+    if unique_domains:
+        cookie_status = f"Active ({', '.join(unique_domains)})"
+    elif config.has_valid_cookies():
+        cookie_status = "Loaded"
+    else:
+        cookie_status = "Not found (public access only)"
 
     msg = (
         "📊 *System Diagnostics*\n\n"
         f"• *PC Destination*: `{config.PC_DOWNLOAD_DIR}`\n"
-        f"• *Cookies File*: `{cookie_status}`\n"
+        f"• *Cookies Status*: `{cookie_status}`\n"
         f"• *FFmpeg Path*: `{ffmpeg_path}`\n"
-        f"• *Temp Directory*: `{config.TEMP_DOWNLOAD_DIR}`\n"
+        f"• *Temp Directory*: `{config.TEMP_DOWNLOAD_DIR}`\n\n"
+        "💡 _Tip: You can send any exported `cookies.txt` file directly into this chat to update authentication!_"
     )
     await update.effective_message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
 
@@ -276,6 +298,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not result.get("success"):
         error_msg = result.get("error", "Unknown download error occurred.")
+        if "only available for registered users who follow this account" in error_msg:
+            error_msg += (
+                "\n\n🔒 *Private Account Notice*:\n"
+                "This post belongs to a private Instagram account.\n"
+                "To download private posts, please send your exported Instagram `cookies.txt` file directly into this chat!"
+            )
+        elif "Sign in to confirm you're not a bot" in error_msg:
+            error_msg += (
+                "\n\n🤖 *YouTube Bot Block Notice*:\n"
+                "YouTube is requiring login verification.\n"
+                "Please export your YouTube `cookies.txt` file and send it directly into this chat!"
+            )
         await query.edit_message_text(
             f"❌ *Download Failed*\n\n{error_msg}",
             parse_mode=ParseMode.MARKDOWN,
@@ -419,6 +453,102 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pass
 
 
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle uploaded cookie files (e.g. cookies.txt or instagram_cookies.txt)."""
+    if not check_authorized(update):
+        await unauthorized_reply(update)
+        return
+
+    doc = update.effective_message.document
+    if not doc:
+        return
+
+    filename = (doc.file_name or "").lower()
+    if not (filename.endswith(".txt") or "cookie" in filename):
+        await update.effective_message.reply_text(
+            "ℹ️ To upload cookies, please send a `.txt` file exported using 'Get cookies.txt LOCALLY'."
+        )
+        return
+
+    status_msg = await update.effective_message.reply_text("📥 *Receiving cookies file...*", parse_mode=ParseMode.MARKDOWN)
+
+    try:
+        file = await context.bot.get_file(doc.file_id)
+        temp_path = config.TEMP_DOWNLOAD_DIR / f"upload_{doc.file_id}.txt"
+        await file.download_to_drive(custom_path=temp_path)
+
+        with open(temp_path, "r", encoding="utf-8", errors="ignore") as f:
+            new_content = f.read()
+
+        try:
+            temp_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+        if not ("#" in new_content or "TRUE" in new_content or "FALSE" in new_content or "\t" in new_content):
+            await status_msg.edit_text("❌ The uploaded file does not appear to be a valid Netscape cookie file.")
+            return
+
+        new_lines = new_content.splitlines()
+        clean_new_lines = []
+        for line in new_lines:
+            sline = line.strip()
+            if not sline or sline.startswith("#"):
+                continue
+            parts = sline.split("\t")
+            if len(parts) >= 7:
+                cookie_name = parts[5]
+                # Filter out volatile SIDTS
+                if "SIDTS" in cookie_name:
+                    continue
+                clean_new_lines.append(sline)
+
+        if not clean_new_lines:
+            await status_msg.edit_text("❌ No valid cookie entries found in the file.")
+            return
+
+        # Load existing cookies from master
+        existing_lines = []
+        if config.COOKIES_FILE_PATH.exists():
+            with open(config.COOKIES_FILE_PATH, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    sline = line.strip()
+                    if sline and not sline.startswith("#"):
+                        existing_lines.append(sline)
+
+        # Merge by (domain, path, cookie_name)
+        cookie_map = {}
+        for line in existing_lines:
+            parts = line.split("\t")
+            if len(parts) >= 7:
+                key = (parts[0], parts[2], parts[5])
+                cookie_map[key] = line
+
+        for line in clean_new_lines:
+            parts = line.split("\t")
+            key = (parts[0], parts[2], parts[5])
+            cookie_map[key] = line
+
+        with open(config.COOKIES_FILE_PATH, "w", encoding="utf-8") as f:
+            f.write("# Netscape HTTP Cookie File\n# Generated by MediaLink-Downloader\n\n")
+            for line in cookie_map.values():
+                f.write(line + "\n")
+
+        all_domains = sorted(set(k[0] for k in cookie_map.keys()))
+        domain_list = "\n".join([f"• `{d}`" for d in all_domains])
+
+        await status_msg.edit_text(
+            f"🍪 *Cookies Successfully Updated!*\n\n"
+            f"📦 *Active Domains* ({len(all_domains)}):\n{domain_list}\n\n"
+            f"🔢 *Total Active Cookies*: {len(cookie_map)}\n\n"
+            f"✅ Authentication is now active for private Instagram accounts and YouTube!",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    except Exception as e:
+        logger.error(f"Error saving uploaded cookies: {e}", exc_info=True)
+        await status_msg.edit_text(f"❌ Failed to process cookies file: {e}")
+
+
 def main():
     """Start the Telegram Bot."""
     token = config.TELEGRAM_BOT_TOKEN
@@ -448,6 +578,7 @@ def main():
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("status", cmd_status))
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
     app.add_handler(CallbackQueryHandler(handle_callback))
 

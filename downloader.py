@@ -26,7 +26,7 @@ def _safe_raise_no_formats(self, name='video', expected=False):
 
 ig.InstagramIE.raise_no_formats = _safe_raise_no_formats
 
-from config import COOKIES_FILE_PATH, has_valid_cookies
+from config import COOKIES_FILE_PATH, TEMP_DOWNLOAD_DIR, has_valid_cookies
 
 logger = logging.getLogger(__name__)
 
@@ -135,27 +135,47 @@ def get_best_thumbnail_url(thumbnails: List[Dict[str, Any]]) -> Optional[str]:
     return sorted_thumbs[0].get("url")
 
 
+def _get_active_cookiefile() -> Optional[str]:
+    """
+    Returns the path to a session copy of the cookies file.
+    This prevents yt-dlp from overwriting or stripping authentication tokens
+    (like LOGIN_INFO, SID, sessionid) from the master cookies file.
+    """
+    if not has_valid_cookies():
+        return None
+    try:
+        session_cookie = TEMP_DOWNLOAD_DIR / "session_cookies.txt"
+        shutil.copyfile(COOKIES_FILE_PATH, session_cookie)
+        return str(session_cookie)
+    except Exception as e:
+        logger.warning(f"Could not create session cookiefile copy: {e}")
+        return str(COOKIES_FILE_PATH)
+
+
 def get_media_info(url: str) -> Dict[str, Any]:
     """Extract metadata for a URL without downloading."""
     clean_url = clean_media_url(url)
     ffmpeg_exe = get_ffmpeg_path()
+    active_cookie = _get_active_cookiefile()
+
     ydl_opts: Dict[str, Any] = {
         "quiet": True,
         "no_warnings": True,
         "nocheckcertificate": True,
         "skip_download": True,
-        "extractor_args": {
+    }
+
+    if active_cookie:
+        ydl_opts["cookiefile"] = active_cookie
+    else:
+        ydl_opts["extractor_args"] = {
             "youtube": {
                 "player_client": ["ios", "mweb", "android", "tv"]
             }
-        },
-    }
+        }
 
     if ffmpeg_exe:
         ydl_opts["ffmpeg_location"] = ffmpeg_exe
-
-    if has_valid_cookies():
-        ydl_opts["cookiefile"] = str(COOKIES_FILE_PATH)
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -249,6 +269,8 @@ def download_media(
             "error": "FFmpeg executable not found. Install imageio-ffmpeg.",
         }
 
+    active_cookie = _get_active_cookiefile()
+
     # First, probe media info to determine whether it's video, audio, or photo
     probe_opts: Dict[str, Any] = {
         "quiet": True,
@@ -256,14 +278,15 @@ def download_media(
         "nocheckcertificate": True,
         "skip_download": True,
         "ffmpeg_location": ffmpeg_exe,
-        "extractor_args": {
+    }
+    if active_cookie:
+        probe_opts["cookiefile"] = active_cookie
+    else:
+        probe_opts["extractor_args"] = {
             "youtube": {
                 "player_client": ["ios", "mweb", "android", "tv"]
             }
-        },
-    }
-    if has_valid_cookies():
-        probe_opts["cookiefile"] = str(COOKIES_FILE_PATH)
+        }
 
     info = None
     try:
@@ -327,15 +350,16 @@ def download_media(
         "nocheckcertificate": True,
         "windowsfilenames": True,
         "progress_hooks": [internal_hook],
-        "extractor_args": {
+    }
+
+    if active_cookie:
+        ydl_opts["cookiefile"] = active_cookie
+    else:
+        ydl_opts["extractor_args"] = {
             "youtube": {
                 "player_client": ["ios", "mweb", "android", "tv"]
             }
-        },
-    }
-
-    if has_valid_cookies():
-        ydl_opts["cookiefile"] = str(COOKIES_FILE_PATH)
+        }
 
     if format_type == "video":
         ydl_opts.update({
