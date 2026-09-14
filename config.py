@@ -41,6 +41,16 @@ if not COOKIES_FILE_PATH.is_absolute():
     COOKIES_FILE_PATH = BASE_DIR / _cookie_env
 
 
+# Support passing cookies directly via environment variable (useful on Render / Docker)
+_cookies_content = os.getenv("COOKIES_CONTENT", "").strip()
+if _cookies_content and (not COOKIES_FILE_PATH.exists() or COOKIES_FILE_PATH.stat().st_size == 0):
+    try:
+        with open(COOKIES_FILE_PATH, "w", encoding="utf-8") as f:
+            f.write(_cookies_content)
+    except Exception as e:
+        pass
+
+
 def has_valid_cookies() -> bool:
     """Return True if cookies.txt exists and is non-empty."""
     return COOKIES_FILE_PATH.exists() and COOKIES_FILE_PATH.stat().st_size > 0
