@@ -12,7 +12,7 @@ import logging
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Dict, Any
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
@@ -308,6 +308,40 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎬 *Title*: {title}",
         parse_mode=ParseMode.MARKDOWN,
     )
+
+    # If carousel with multiple photos (up to 10), send as a single album
+    all_photos = all(
+        item.get("media_type") == "photo" or os.path.splitext(item["path"])[1].lower() in [".jpg", ".jpeg", ".png", ".webp"]
+        for item in files
+    )
+
+    if len(files) > 1 and all_photos and len(files) <= 10:
+        file_handles = []
+        try:
+            media_group = []
+            for i, item in enumerate(files):
+                fh = open(item["path"], "rb")
+                file_handles.append(fh)
+                caption = f"📸 {title[:100]} ({i+1}/{len(files)})" if i == 0 else None
+                media_group.append(InputMediaPhoto(media=fh, caption=caption))
+            await context.bot.send_media_group(chat_id=chat_id, media=media_group)
+            for fh in file_handles:
+                fh.close()
+            for item in files:
+                try:
+                    if os.path.isfile(item["path"]):
+                        os.remove(item["path"])
+                except Exception:
+                    pass
+            pending_requests.pop(req_id, None)
+            return
+        except Exception as album_err:
+            logger.warning(f"Failed to send as album, falling back to individual send: {album_err}")
+            for fh in file_handles:
+                try:
+                    fh.close()
+                except Exception:
+                    pass
 
     for item in files:
         fpath = item["path"]

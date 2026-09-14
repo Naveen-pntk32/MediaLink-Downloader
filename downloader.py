@@ -242,7 +242,8 @@ def download_media(
     info = None
     try:
         with yt_dlp.YoutubeDL(probe_opts) as ydl:
-            info = ydl.extract_info(clean_url, download=False)
+            # process=False prevents YoutubeDL from failing on posts with no video formats
+            info = ydl.extract_info(clean_url, download=False, process=False)
     except Exception as probe_err:
         logger.info(f"Probe notice: {probe_err}")
 
@@ -434,7 +435,7 @@ def download_media(
             logger.info("Caught image-only post. Attempting fallback photo extraction...")
             try:
                 with yt_dlp.YoutubeDL(probe_opts) as ydl_fb:
-                    fb_info = ydl_fb.extract_info(clean_url, download=False)
+                    fb_info = ydl_fb.extract_info(clean_url, download=False, process=False)
                     if fb_info:
                         fb_title = fb_info.get("title", "Instagram_Post")
                         photos = _extract_images_from_info(fb_info, output_dir, fb_title)
