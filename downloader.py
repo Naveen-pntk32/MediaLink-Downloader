@@ -104,18 +104,34 @@ def download_image_file(img_url: str, output_path: str) -> bool:
 
 
 def get_best_thumbnail_url(thumbnails: List[Dict[str, Any]]) -> Optional[str]:
-    """Find the highest resolution image URL from a list of thumbnails."""
+    """Find the true highest-resolution, uncompressed original photo URL."""
     if not thumbnails:
         return None
     valid = [t for t in thumbnails if t.get("url")]
     if not valid:
         return None
-    # Sort by dimension (width * height) descending
-    sorted_thumbs = sorted(
-        valid,
-        key=lambda t: (t.get("width") or 0) * (t.get("height") or 0),
-        reverse=True,
-    )
+
+    def score_thumb(t):
+        url = t.get("url", "")
+        w = t.get("width") or 0
+        h = t.get("height") or 0
+        if w > 0 and h > 0:
+            return w * h
+
+        # Original uncompressed photo on Instagram (no downscaling pattern)
+        if "dst-jpg" in url and not re.search(r'[spc]\d+x\d+', url):
+            return 99_999_999
+
+        # Extract dimensions from URL if present (e.g. s1080x1080, p720x720)
+        dim = re.search(r'[spc]?(\d+)x(\d+)', url)
+        if dim:
+            return int(dim.group(1)) * int(dim.group(2))
+
+        return 1
+
+    sorted_thumbs = sorted(valid, key=score_thumb, reverse=True)
+    if score_thumb(sorted_thumbs[0]) <= 1:
+        return valid[-1].get("url")
     return sorted_thumbs[0].get("url")
 
 
