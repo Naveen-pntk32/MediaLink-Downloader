@@ -14,6 +14,17 @@ import urllib.parse
 from typing import Dict, Any, List, Optional
 import requests
 import yt_dlp
+import yt_dlp.extractor.instagram as ig
+
+# Patch InstagramIE to prevent raising "There is no video in this post" on photo posts
+_orig_raise_no_formats = ig.InstagramIE.raise_no_formats
+
+def _safe_raise_no_formats(self, name='video', expected=False):
+    if isinstance(name, str) and ("no video" in name.lower() or "no formats" in name.lower()):
+        return
+    _orig_raise_no_formats(self, name=name, expected=expected)
+
+ig.InstagramIE.raise_no_formats = _safe_raise_no_formats
 
 from config import COOKIES_FILE_PATH, has_valid_cookies
 
@@ -418,9 +429,9 @@ def download_media(
 
     except yt_dlp.utils.DownloadError as e:
         err_msg = str(e)
-        # Handle "No video formats found" -> fallback to photo download
-        if "no video formats found" in err_msg.lower():
-            logger.info("Caught 'No video formats found'. Attempting fallback photo extraction...")
+        # Handle "No video formats found" or "There is no video in this post" -> fallback to photo download
+        if "no video formats found" in err_msg.lower() or "no video in this post" in err_msg.lower():
+            logger.info("Caught image-only post. Attempting fallback photo extraction...")
             try:
                 with yt_dlp.YoutubeDL(probe_opts) as ydl_fb:
                     fb_info = ydl_fb.extract_info(clean_url, download=False)
