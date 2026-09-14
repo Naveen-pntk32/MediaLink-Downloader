@@ -1,0 +1,10 @@
+services:
+  medialink-bot:
+    build: .
+    container_name: medialink-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./downloads:/app/downloads
+      - ./cookies.txt:/app/cookies.txt:ro
