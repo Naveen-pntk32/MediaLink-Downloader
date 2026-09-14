@@ -199,12 +199,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = [
         [
-            InlineKeyboardButton("📥 Save to PC (MP4 Video)", callback_data=f"pc_video:{req_id}"),
-            InlineKeyboardButton("📱 Send to Chat (MP4 Video)", callback_data=f"chat_video:{req_id}"),
+            InlineKeyboardButton("📥 Save to PC", callback_data=f"pc_video:{req_id}"),
+            InlineKeyboardButton("📱 Send to Chat", callback_data=f"chat_video:{req_id}"),
         ],
         [
-            InlineKeyboardButton("💾 Save to PC (MP3 Audio)", callback_data=f"pc_audio:{req_id}"),
-            InlineKeyboardButton("🎵 Send to Chat (MP3 Audio)", callback_data=f"chat_audio:{req_id}"),
+            InlineKeyboardButton("💾 Save MP3 to PC", callback_data=f"pc_audio:{req_id}"),
+            InlineKeyboardButton("🎵 Send MP3 to Chat", callback_data=f"chat_audio:{req_id}"),
         ],
         [
             InlineKeyboardButton("❌ Cancel", callback_data=f"cancel:{req_id}"),
@@ -250,7 +250,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     format_type = "audio" if action.endswith("_audio") else "video"
 
     target_label = f"PC ({config.PC_DOWNLOAD_DIR})" if save_to_pc else "Telegram Chat"
-    format_label = "MP3 Audio (320kbps)" if format_type == "audio" else "MP4 Video"
+    format_label = "MP3 Audio (320kbps)" if format_type == "audio" else "Best Quality (Video / Photo)"
 
     await query.edit_message_text(
         f"⏳ *Processing...*\n"
@@ -262,7 +262,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     output_dir = config.PC_DOWNLOAD_DIR if save_to_pc else str(config.TEMP_DOWNLOAD_DIR / req_id)
 
-    # Run blocking yt-dlp download in thread pool
+    # Run blocking download in thread pool
     try:
         result = await asyncio.to_thread(
             download_media,
@@ -284,26 +284,27 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     title = result.get("title", "Media")
     files = result.get("files", [])
+    media_type = result.get("media_type", "video")
 
     # Case 1: Save to PC
     if save_to_pc:
+        type_icon = "📸" if media_type == "photo" else ("🎵" if media_type == "audio" else "🎬")
         file_summary = "\n".join(
             [f"• `{f['filename']}` ({f['size_mb']} MB)" for f in files]
         )
         success_msg = (
             f"✅ *Saved to PC Successfully!*\n\n"
-            f"🎬 *Title*: {title}\n"
+            f"{type_icon} *Title*: {title}\n"
             f"📁 *Folder*: `{config.PC_DOWNLOAD_DIR}`\n"
-            f"📦 *Files*:\n{file_summary}"
+            f"📦 *Files* ({len(files)} item{'s' if len(files) > 1 else ''}):\n{file_summary}"
         )
         await query.edit_message_text(success_msg, parse_mode=ParseMode.MARKDOWN)
-        # Clean up pending request
         pending_requests.pop(req_id, None)
         return
 
     # Case 2: Send to Telegram Chat
     await query.edit_message_text(
-        f"📤 *Download finished! Uploading to Telegram chat...*\n"
+        f"📤 *Download finished! Sending to Telegram chat...*\n"
         f"🎬 *Title*: {title}",
         parse_mode=ParseMode.MARKDOWN,
     )
@@ -311,6 +312,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for item in files:
         fpath = item["path"]
         size_mb = item["size_mb"]
+        item_type = item.get("media_type")
+        ext = os.path.splitext(fpath)[1].lower()
+        is_photo = item_type == "photo" or ext in [".jpg", ".jpeg", ".png", ".webp"]
+        is_audio = format_type == "audio" or ext in [".mp3", ".m4a", ".aac"]
 
         # Telegram standard Bot API upload limit is 50MB
         if size_mb > 50.0:
@@ -323,7 +328,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ),
                 parse_mode=ParseMode.MARKDOWN,
             )
-            # Move to PC download directory so it isn't lost
             try:
                 dest = os.path.join(config.PC_DOWNLOAD_DIR, item["filename"])
                 os.replace(fpath, dest)
@@ -333,12 +337,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         try:
             with open(fpath, "rb") as f:
-                if format_type == "audio":
+                if is_audio:
                     await context.bot.send_audio(
                         chat_id=chat_id,
                         audio=f,
                         title=title[:60],
                         caption=f"🎵 {title[:100]}",
+                    )
+                elif is_photo:
+                    await context.bot.send_photo(
+                        chat_id=chat_id,
+                        photo=f,
+                        caption=f"📸 {title[:100]}",
                     )
                 else:
                     await context.bot.send_video(
@@ -354,7 +364,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text=f"⚠️ Failed to upload file to chat: {upload_err}",
             )
         finally:
-            # Clean up temp file
             try:
                 if os.path.isfile(fpath):
                     os.remove(fpath)
